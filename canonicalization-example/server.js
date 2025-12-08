@@ -12,7 +12,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const BASE_DIR = path.resolve(__dirname, 'files');
 if (!fs.existsSync(BASE_DIR)) fs.mkdirSync(BASE_DIR, { recursive: true });
 
-// helper to canonicalize and check
+// Canonicalization helper
 function resolveSafe(baseDir, userInput) {
   try {
     userInput = decodeURIComponent(userInput);
@@ -20,7 +20,9 @@ function resolveSafe(baseDir, userInput) {
   return path.resolve(baseDir, userInput);
 }
 
-// Secure route
+// -------------------------
+// SECURE /read ROUTE
+// -------------------------
 app.post(
   '/read',
   body('filename')
@@ -39,62 +41,80 @@ app.post(
 
     const filename = req.body.filename;
     const normalized = resolveSafe(BASE_DIR, filename);
+
+    // Prevent traversal
     if (!normalized.startsWith(BASE_DIR + path.sep)) {
       return res.status(403).json({ error: 'Path traversal detected' });
     }
-    if (!fs.existsSync(normalized)) return res.status(404).json({ error: 'File not found' });
+
+    if (!fs.existsSync(normalized)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
 
     const content = fs.readFileSync(normalized, 'utf8');
     res.json({ path: normalized, content });
   }
 );
 
-// Secure route - prevents path traversal
+// -------------------------
+// SECURE read-no-validate ROUTE
+// -------------------------
 app.post('/read-no-validate', (req, res) => {
   const filename = req.body.filename || '';
 
-  // Normalize user input
+  // Basic normalization
   let safeName = path.normalize(filename);
 
-  // Block traversal attempts like "../", "./../", etc.
-  if (safeName.includes("..") || path.isAbsolute(safeName)) {
-    return res.status(400).json({ error: "Invalid filename" });
+  // Block ../ and absolute paths
+  if (safeName.includes('..') || path.isAbsolute(safeName)) {
+    return res.status(400).json({ error: 'Invalid filename' });
   }
 
-  // Build the safe full path
-  const joined = path.join(BASE_DIR, safeName);
+  const fullPath = path.resolve(BASE_DIR, safeName);
 
-  // Check if file exists
-  if (!fs.existsSync(joined)) {
-    return res.status(404).json({ error: "File not found", path: joined });
+  // Prevent breaking out of BASE_DIR
+  if (!fullPath.startsWith(BASE_DIR + path.sep)) {
+    return res.status(403).json({ error: 'Path traversal blocked' });
   }
 
-  // Read content safely
-  const content = fs.readFileSync(joined, 'utf8');
-  res.json({ path: joined, content });
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).json({ error: 'File not found', path: fullPath });
+  }
+
+  const content = fs.readFileSync(fullPath, 'utf8');
+  res.json({ path: fullPath, content });
 });
 
-// Helper route for samples
+// -------------------------
+// SECURE SAMPLE FILE CREATOR
+// -------------------------
 app.post('/setup-sample', (req, res) => {
   const samples = {
     'hello.txt': 'Hello from safe file!\n',
     'notes/readme.md': '# Readme\nSample readme file'
   };
-  Object.keys(samples).forEach(k => {
-    const p = path.resolve(BASE_DIR, k);
-    const d = path.dirname(p);
-    if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
-    fs.writeFileSync(p, samples[k], 'utf8');
+
+  Object.keys(samples).forEach(name => {
+    const safePath = path.resolve(BASE_DIR, name);
+
+    // Block traversal attempts
+    if (!safePath.startsWith(BASE_DIR + path.sep)) {
+      return; // Skip unsafe paths
+    }
+
+    const dir = path.dirname(safePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    fs.writeFileSync(safePath, samples[name], 'utf8');
   });
+
   res.json({ ok: true, base: BASE_DIR });
 });
 
-// Only listen when run directly (not when imported by tests)
+// -------------------------
 if (require.main === module) {
   const port = process.env.PORT || 4000;
-  app.listen(port, () => {
-    console.log(`Server listening on http://localhost:${port}`);
-  });
+  app.listen(port, () => console.log(`Server listening on http://localhost:${port}`));
 }
 
 module.exports = app;
