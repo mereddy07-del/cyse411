@@ -103,7 +103,7 @@ app.post('/setup-sample', (req, res) => {
       continue;
     }
 
-    const filePath = path.resolve(BASE_DIR, normalized);
+    const filePath = resolveSafe(BASE_DIR, normalized);
 
     // ensure stays inside BASE_DIR
     if (!filePath.startsWith(BASE_DIR + path.sep)) {
