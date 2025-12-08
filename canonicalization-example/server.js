@@ -49,11 +49,27 @@ app.post(
   }
 );
 
-// Vulnerable route (demo)
+// Secure route - prevents path traversal
 app.post('/read-no-validate', (req, res) => {
   const filename = req.body.filename || '';
-  const joined = path.join(BASE_DIR, filename); // intentionally vulnerable
-  if (!fs.existsSync(joined)) return res.status(404).json({ error: 'File not found', path: joined });
+
+  // Normalize user input
+  let safeName = path.normalize(filename);
+
+  // Block traversal attempts like "../", "./../", etc.
+  if (safeName.includes("..") || path.isAbsolute(safeName)) {
+    return res.status(400).json({ error: "Invalid filename" });
+  }
+
+  // Build the safe full path
+  const joined = path.join(BASE_DIR, safeName);
+
+  // Check if file exists
+  if (!fs.existsSync(joined)) {
+    return res.status(404).json({ error: "File not found", path: joined });
+  }
+
+  // Read content safely
   const content = fs.readFileSync(joined, 'utf8');
   res.json({ path: joined, content });
 });
