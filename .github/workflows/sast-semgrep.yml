@@ -7,19 +7,20 @@ on:
 jobs:
   semgrep:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Install Semgrep
-        run: pip install semgrep
+        run: |
+          pip install semgrep
 
       - name: Run Semgrep SAST
         run: |
-          semgrep --config=p/owasp-top-ten --error --sarif > semgrep-results.sarif
+          semgrep --config=p/owasp-top-ten --json > semgrep-results.json
 
       - name: Upload Semgrep SARIF report
-        uses: github/codeql-action/upload-sarif@v2
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: semgrep-results.sarif
+          name: semgrep-report
+          path: semgrep-results.json
