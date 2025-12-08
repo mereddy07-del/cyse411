@@ -1,38 +1,42 @@
 name: DAST - OWASP ZAP Full Scan
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # run manually from Actions tab
 
 jobs:
   zap_scan:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
-      - name: Install dependencies
-        working-directory: fastbank_insecure_classwork
-        run: npm install
+      - name: Install lab dependencies
+        working-directory: fastbank_insecure_classwork/backend
+        run: |
+          npm install
 
       - name: Start vulnerable app
-        working-directory: fastbank_insecure_classwork
+        working-directory: fastbank_insecure_classwork/backend
         run: |
           npm start &
-          sleep 8
+          # wait for the server to boot
+          sleep 20
 
-      - name: Run OWASP ZAP Full Scan
-        uses: zaproxy/action-full-scan@v0.4.0
+      - name: Run OWASP ZAP full scan
+        uses: zaproxy/action-full-scan@v0.13.0
         with:
           target: "http://localhost:3000"
+          fail_action: true
+          allow_issue_writing: false
 
-      - name: Upload ZAP report
+      - name: Upload ZAP scan report
         uses: actions/upload-artifact@v4
         with:
-          name: zap-report
-          path: /home/runner/work/cyse411/zap-full-scan-report.html
+          name: zap_scan
+          path: report.html
