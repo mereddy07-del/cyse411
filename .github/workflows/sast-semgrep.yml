@@ -7,6 +7,7 @@ on:
 jobs:
   semgrep:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -17,7 +18,10 @@ jobs:
 
       - name: Run Semgrep SAST
         run: |
-          semgrep --config=p/owasp-top-ten --json > semgrep-results.json
+          semgrep --config=p/owasp-top-ten canonicalization-example --json > semgrep-results.json
+          semgrep --config=p/owasp-top-ten idor --json >> semgrep-results.json
+          semgrep --config=p/owasp-top-ten fastbank-auth-lab --json >> semgrep-results.json
+          semgrep --config=p/owasp-top-ten fastbank_insecure_classwork --json >> semgrep-results.json
 
       - name: Upload Semgrep SARIF report
         uses: actions/upload-artifact@v4
