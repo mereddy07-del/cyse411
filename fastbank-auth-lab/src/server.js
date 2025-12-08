@@ -13,11 +13,15 @@ app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.static("public"));
 
-/**
- * VULNERABLE FAKE USER DB
- * For simplicity, we start with a single user whose password is "password123".
- * In the vulnerable version, we hash with a fast hash (SHA-256-like).
- */
+/* --- FIX: Add CSP header to satisfy ZAP ---
+   This removes the Medium vulnerability:
+   "CSP: Failure to Define Directive With No Fallback"
+*/
+app.use((req, res, next) => {
+  res.setHeader("Content-Security-Policy", "default-src 'self'");
+  next();
+});
+
 const users = [
   {
     id: 1,
