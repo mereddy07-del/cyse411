@@ -70,7 +70,7 @@ app.post('/read-no-validate', (req, res) => {
     return res.status(400).json({ error: 'Invalid filename' });
   }
 
-  const fullPath = path.resolve(BASE_DIR, safeName);
+  const filePath = resolveSafe(BASE_DIR, safeName);
 
   // Prevent breaking out of BASE_DIR
   if (!fullPath.startsWith(BASE_DIR + path.sep)) {
