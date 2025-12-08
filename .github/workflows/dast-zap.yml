@@ -1,7 +1,7 @@
 name: DAST - OWASP ZAP Full Scan
 
 on:
-  workflow_dispatch:   # run manually from Actions tab
+  workflow_dispatch:
 
 jobs:
   zap_scan:
@@ -18,14 +18,17 @@ jobs:
 
       - name: Install lab dependencies
         working-directory: fastbank_insecure_classwork/backend
-        run: |
-          npm install
+        run: npm install
 
       - name: Start vulnerable app
         working-directory: fastbank_insecure_classwork/backend
         run: |
-          node server.js &
+          PORT=4000 node server.js &
           sleep 20
+
+      - name: Debug server headers
+        run: |
+          curl -I http://localhost:4000
 
       - name: Run OWASP ZAP full scan
         uses: zaproxy/action-full-scan@v0.13.0
