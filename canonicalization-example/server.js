@@ -5,6 +5,17 @@ const fs = require('fs');
 const { body, validationResult } = require('express-validator');
 
 const app = express();
+
+// Add strict CSP header to satisfy ZAP and prevent missing fallback directive
+app.use((req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; frame-ancestors 'none'; form-action 'self'"
+  );
+  next();
+});
+
+
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
