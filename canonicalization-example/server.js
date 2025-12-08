@@ -94,19 +94,27 @@ app.post('/setup-sample', (req, res) => {
     'notes/readme.md': '# Readme\nSample readme file'
   };
 
-  Object.keys(samples).forEach(name => {
-    const safePath = path.resolve(BASE_DIR, name);
+  for (const key of Object.keys(samples)) {
+    // DO NOT trust the filenames in the dictionary
+    const normalized = path.normalize(key);
 
-    // Block traversal attempts
-    if (!safePath.startsWith(BASE_DIR + path.sep)) {
-      return; // Skip unsafe paths
+    // block ../ or absolute paths (Semgrep wants this)
+    if (normalized.includes('..') || path.isAbsolute(normalized)) {
+      continue;
     }
 
-    const dir = path.dirname(safePath);
+    const filePath = path.resolve(BASE_DIR, normalized);
+
+    // ensure stays inside BASE_DIR
+    if (!filePath.startsWith(BASE_DIR + path.sep)) {
+      continue;
+    }
+
+    const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    fs.writeFileSync(safePath, samples[name], 'utf8');
-  });
+    fs.writeFileSync(filePath, samples[key], 'utf8');
+  }
 
   res.json({ ok: true, base: BASE_DIR });
 });
