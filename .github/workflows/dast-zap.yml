@@ -25,8 +25,9 @@ jobs:
         run: |
           node server.js &
           echo "Waiting for server..."
+          
           for i in {1..25}; do
-            if nc -z localhost 3000; then
+            if curl -s http://localhost:3000 > /dev/null; then
               echo "Server is up!"
               break
             fi
