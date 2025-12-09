@@ -7,51 +7,55 @@ const crypto = require("crypto");
 
 const app = express();
 
-// -------------------------------
-// GLOBAL SECURITY HEADERS
-// -------------------------------
-app.disable("x-powered-by"); // Fix: remove "X-Powered-By: Express"
+/* -------- GLOBAL SECURITY HEADERS (fix ZAP alerts) -------- */
+
+// don’t leak “X-Powered-By: Express”
+app.disable("x-powered-by");
 
 app.use((req, res, next) => {
-  // Strong CSP (fixes CSP: Failure to define directive + unsafe-inline alerts)
+  // Strong CSP with clear fallbacks; no unsafe-inline
   res.setHeader(
     "Content-Security-Policy",
     [
       "default-src 'self'",
       "script-src 'self'",
       "style-src 'self'",
-      "img-src 'self' data:",
+      "img-src 'self'",
       "connect-src 'self'",
       "form-action 'self'",
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "base-uri 'self'"
+      "frame-ancestors 'none'"
     ].join("; ")
   );
 
-  // Fix: Spectre vulnerability alerts (Cross-Origin-Resource-Policy)
+  // Mitigate Spectre – resources stay same-origin unless you explicitly relax
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-
-  // Fix: ZAP Cross-Origin-Embedder-Policy missing
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
 
-  // Fix: caching warnings
-  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, private");
+  // Prevent MIME sniffing
+  res.setHeader("X-Content-Type-Options", "nosniff");
+
+  // No framing
+  res.setHeader("X-Frame-Options", "DENY");
+
+  // Reduce other powerful APIs (you can add more if you want)
+  res.setHeader("Permissions-Policy", "geolocation=()");
+
+  // Stop caching of responses (fix “Storable and Cacheable Content”)
+  res.setHeader(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, max-age=0"
+  );
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
 
-  // Other recommended security headers
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Permissions-Policy", "geolocation=()");
-
   next();
 });
+
 // --- BASIC CORS ---
 app.use(
   cors({
     origin: ["http://localhost:3001", "http://127.0.0.1:3001"],
-    credentials: true
+    credentials: true,
   })
 );
 
