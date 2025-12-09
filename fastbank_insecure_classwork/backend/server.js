@@ -9,12 +9,22 @@ const app = express();
 
 // Add global security headers (fixes ZAP Medium CSP alert)
 app.use((req, res, next) => {
-  res.setHeader("Content-Security-Policy", "default-src 'self'");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; " +
+      "script-src 'self'; " +
+      "style-src 'self'; " +
+      "img-src 'self'; " +
+      "connect-src 'self'; " +
+      "form-action 'self'; " +
+      "frame-ancestors 'none'; "
+  );
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Permissions-Policy", "geolocation=()");
   next();
 });
+
 
 // --- BASIC CORS (clean, not vulnerable) ---
 app.use(
