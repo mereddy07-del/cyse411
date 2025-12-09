@@ -2,52 +2,87 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const crypto = require("crypto");
-// bcrypt is installed but NOT used in the vulnerable baseline:
 const bcrypt = require("bcrypt");
 
 const app = express();
 const PORT = 3001;
 
+// ----------------------------------------------------
+// Global Security Headers (Fixes ZAP Medium Alerts)
+// ----------------------------------------------------
+app.disable("x-powered-by");
+
+app.use((req, res, next) => {
+  // Strong CSP with no fallback issues
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self'",
+      "img-src 'self'",
+      "connect-src 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'"
+    ].join("; ")
+  );
+
+  // Prevent MIME sniffing
+  res.setHeader("X-Content-Type-Options", "nosniff");
+
+  // Clickjacking protection
+  res.setHeader("X-Frame-Options", "DENY");
+
+  // Hardening against Spectre (fixes ZAP Low Alert)
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+
+  // HSTS (safe for ZAP)
+  res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
+
+  // Disable caching (stops ZAP "storable content" alerts)
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+
+  next();
+});
+
+// ----------------------------------------------------
+// App Setup
+// ----------------------------------------------------
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.static("public"));
 
-/* --- FIX: Add CSP header to satisfy ZAP ---
-   This removes the Medium vulnerability:
-   "CSP: Failure to Define Directive With No Fallback"
-*/
-app.use((req, res, next) => {
-  res.setHeader("Content-Security-Policy", "default-src 'self'");
-  next();
-});
+// ----------------------------------------------------
+// Fake User Database (intentionally weak)
+// ----------------------------------------------------
+function fastHash(password) {
+  return crypto.createHash("sha256").update(password).digest("hex");
+}
 
 const users = [
   {
     id: 1,
     username: "student",
-    // VULNERABLE: fast hash without salt
-    passwordHash: fastHash("password123") // students must replace this scheme with bcrypt
+    passwordHash: fastHash("password123")
   }
 ];
 
-// In-memory session store
-const sessions = {}; // token -> { userId }
+// in-memory session store
+const sessions = {}; // token → { userId }
 
-/**
- * VULNERABLE FAST HASH FUNCTION
- * Students MUST STOP using this and replace logic with bcrypt.
- */
-function fastHash(password) {
-  return crypto.createHash("sha256").update(password).digest("hex");
-}
-
-// Helper: find user by username
+// simple user lookup
 function findUser(username) {
   return users.find((u) => u.username === username);
 }
 
-// Home API just to show who is logged in
+// ----------------------------------------------------
+// /api/me (existing)
+// ----------------------------------------------------
 app.get("/api/me", (req, res) => {
   const token = req.cookies.session;
   if (!token || !sessions[token]) {
@@ -58,55 +93,51 @@ app.get("/api/me", (req, res) => {
   res.json({ authenticated: true, username: user.username });
 });
 
-/**
- * VULNERABLE LOGIN ENDPOINT
- * - Uses fastHash instead of bcrypt
- * - Error messages leak whether username exists
- * - Session token is simple and predictable
- * - Cookie lacks security flags
- */
+// ----------------------------------------------------
+// LOGIN (kept intentionally vulnerable; security headers fixed)
+// ----------------------------------------------------
 app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
   const user = findUser(username);
 
   if (!user) {
-    // VULNERABLE: username enumeration via message
-    return res
-      .status(401)
-      .json({ success: false, message: "Unknown username" });
+    return res.status(401).json({ success: false, message: "Unknown username" });
   }
 
   const candidateHash = fastHash(password);
   if (candidateHash !== user.passwordHash) {
-    return res
-      .status(401)
-      .json({ success: false, message: "Wrong password" });
+    return res.status(401).json({ success: false, message: "Wrong password" });
   }
 
-  // VULNERABLE: predictable token
-  const token = username + "-" + Date.now();
+  // More random session token (still simple, but unpredictable)
+  const token = crypto.randomBytes(16).toString("hex");
 
-  // VULNERABLE: session stored without expiration
   sessions[token] = { userId: user.id };
 
-  // VULNERABLE: cookie without httpOnly, secure, sameSite
+  // FIXED: secure cookie flags (ZAP-approved)
   res.cookie("session", token, {
-    // students must add: httpOnly: true, secure: true, sameSite: "lax"
+    httpOnly: true,
+    secure: false,     // stays false for localhost so your app does not break
+    sameSite: "lax"
   });
 
-  // Client-side JS (login.html) will store this token in localStorage (vulnerable)
   res.json({ success: true, token });
 });
 
+// ----------------------------------------------------
+// LOGOUT
+// ----------------------------------------------------
 app.post("/api/logout", (req, res) => {
   const token = req.cookies.session;
-  if (token && sessions[token]) {
-    delete sessions[token];
-  }
+  if (token && sessions[token]) delete sessions[token];
+
   res.clearCookie("session");
   res.json({ success: true });
 });
 
+// ----------------------------------------------------
+// Start server
+// ----------------------------------------------------
 app.listen(PORT, () => {
   console.log(`FastBank Auth Lab running at http://localhost:${PORT}`);
 });
