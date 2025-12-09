@@ -7,14 +7,14 @@ const crypto = require("crypto");
 
 const app = express();
 
-/* -----------------------------------------------------
-   GLOBAL SECURITY HEADERS — FIX ALL ZAP LOW/MEDIUM
------------------------------------------------------- */
+/* ----------------------------------------------------
+   GLOBAL SECURITY HEADERS (Fix ZAP alerts)
+---------------------------------------------------- */
 
 app.disable("x-powered-by");
 
 app.use((req, res, next) => {
-  // CSP (fix Medium alert)
+  // Strong CSP with fallbacks
   res.setHeader(
     "Content-Security-Policy",
     [
@@ -24,39 +24,37 @@ app.use((req, res, next) => {
       "img-src 'self'",
       "connect-src 'self'",
       "form-action 'self'",
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "base-uri 'self'"
+      "frame-ancestors 'none'"
     ].join("; ")
   );
 
-  // FIX: the missing header that caused ZAP Low alert
-  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-
-  // Required for full site isolation
+  // Spectre mitigations
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
 
   // Prevent MIME sniffing
   res.setHeader("X-Content-Type-Options", "nosniff");
 
-  // Prevent clickjacking
+  // No framing
   res.setHeader("X-Frame-Options", "DENY");
 
-  // Reduce browser permissions
+  // Permissions
   res.setHeader("Permissions-Policy", "geolocation=()");
 
-  // Disable caching (fix "Non-storable response" warning)
-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  // Default: Do not cache API responses
+  res.setHeader(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, max-age=0"
+  );
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
 
   next();
 });
 
-// -----------------------------------------------------
-// CORS + PARSERS
-// -----------------------------------------------------
+/* ----------------------------------------------------
+   CORS
+---------------------------------------------------- */
 app.use(
   cors({
     origin: ["http://localhost:3001", "http://127.0.0.1:3001"],
@@ -67,9 +65,9 @@ app.use(
 app.use(bodyParser.json());
 app.use(cookieParser());
 
-// -----------------------------------------------------
-// DB + VULNERABLE LOGIC (unchanged for lab)
-// -----------------------------------------------------
+/* ----------------------------------------------------
+   SQLITE DATABASE
+---------------------------------------------------- */
 const db = new sqlite3.Database(":memory:");
 
 db.serialize(() => {
@@ -99,22 +97,18 @@ db.serialize(() => {
     );
   `);
 
-  const passwordHash = crypto.createHash("sha256")
-    .update("password123")
-    .digest("hex");
+  const passwordHash = crypto.createHash("sha256").update("password123").digest("hex");
 
   db.run(`INSERT INTO users (username, password_hash, email)
           VALUES ('alice', '${passwordHash}', 'alice@example.com');`);
 
-  db.run(`INSERT INTO transactions (user_id, amount, description)
-          VALUES (1, 25.50, 'Coffee shop')`);
-  db.run(`INSERT INTO transactions (user_id, amount, description)
-          VALUES (1, 100, 'Groceries')`);
+  db.run(`INSERT INTO transactions (user_id, amount, description) VALUES (1, 25.50, 'Coffee shop')`);
+  db.run(`INSERT INTO transactions (user_id, amount, description) VALUES (1, 100, 'Groceries')`);
 });
 
-// -----------------------------------------------------
-// SESSION STORE
-// -----------------------------------------------------
+/* ----------------------------------------------------
+   SESSION MANAGEMENT
+---------------------------------------------------- */
 const sessions = {};
 
 function fastHash(pwd) {
@@ -123,103 +117,116 @@ function fastHash(pwd) {
 
 function auth(req, res, next) {
   const sid = req.cookies.sid;
-  if (!sid || !sessions[sid])
-    return res.status(401).json({ error: "Not authenticated" });
-
+  if (!sid || !sessions[sid]) return res.status(401).json({ error: "Not authenticated" });
   req.user = { id: sessions[sid].userId };
   next();
 }
 
-// -----------------------------------------------------
-// VULNERABLE LOGIN (unchanged)
-// -----------------------------------------------------
+/* ----------------------------------------------------
+   LOGIN (Intentionally vulnerable)
+---------------------------------------------------- */
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
-  db.get(
-    `SELECT id, username, password_hash FROM users WHERE username = '${username}'`,
-    (err, user) => {
-      if (!user) return res.status(404).json({ error: "Unknown username" });
+  const sql = `SELECT id, username, password_hash FROM users WHERE username = '${username}'`;
 
-      const candidate = fastHash(password);
-      if (candidate !== user.password_hash)
-        return res.status(401).json({ error: "Wrong password" });
+  db.get(sql, (err, user) => {
+    if (!user) return res.status(404).json({ error: "Unknown username" });
 
-      const sid = `${username}-${Date.now()}`;
-      sessions[sid] = { userId: user.id };
-      res.cookie("sid", sid, {});
-
-      res.json({ success: true });
+    const candidate = fastHash(password);
+    if (candidate !== user.password_hash) {
+      return res.status(401).json({ error: "Wrong password" });
     }
-  );
+
+    const sid = `${username}-${Date.now()}`;
+    sessions[sid] = { userId: user.id };
+
+    res.cookie("sid", sid, {});
+
+    res.json({ success: true });
+  });
 });
 
-// -----------------------------------------------------
-// OTHER LAB ENDPOINTS (unchanged)
-// -----------------------------------------------------
+/* ----------------------------------------------------
+   GET CURRENT USER
+---------------------------------------------------- */
 app.get("/me", auth, (req, res) => {
-  db.get(
-    `SELECT username, email FROM users WHERE id = ${req.user.id}`,
-    (err, row) => res.json(row)
-  );
+  db.get(`SELECT username, email FROM users WHERE id = ${req.user.id}`, (err, row) => {
+    res.json(row);
+  });
 });
 
+/* ----------------------------------------------------
+   Q1 — SQL Injection (Intentional)
+---------------------------------------------------- */
 app.get("/transactions", auth, (req, res) => {
   const q = req.query.q || "";
-  db.all(
-    `
+  const sql = `
     SELECT id, amount, description
     FROM transactions
     WHERE user_id = ${req.user.id}
       AND description LIKE '%${q}%'
     ORDER BY id DESC
-    `,
-    (err, rows) => res.json(rows)
-  );
+  `;
+  db.all(sql, (err, rows) => res.json(rows));
 });
 
+/* ----------------------------------------------------
+   Q2 — Stored XSS + SQLi (Intentional)
+---------------------------------------------------- */
 app.post("/feedback", auth, (req, res) => {
   const comment = req.body.comment;
-  db.get(
-    `SELECT username FROM users WHERE id = ${req.user.id}`,
-    (err, row) => {
-      db.run(
-        `INSERT INTO feedback (user, comment) VALUES ('${row.username}', '${comment}')`,
-        () => res.json({ success: true })
-      );
-    }
-  );
+  const userId = req.user.id;
+
+  db.get(`SELECT username FROM users WHERE id = ${userId}`, (err, row) => {
+    const username = row.username;
+    const insert = `
+      INSERT INTO feedback (user, comment)
+      VALUES ('${username}', '${comment}')
+    `;
+    db.run(insert, () => {
+      res.json({ success: true });
+    });
+  });
 });
 
 app.get("/feedback", auth, (req, res) => {
-  db.all("SELECT user, comment FROM feedback ORDER BY id DESC", (err, rows) =>
-    res.json(rows)
-  );
+  db.all("SELECT user, comment FROM feedback ORDER BY id DESC", (err, rows) => {
+    res.json(rows);
+  });
 });
 
+/* ----------------------------------------------------
+   Q3 — CSRF + SQL Injection (Intentional)
+---------------------------------------------------- */
 app.post("/change-email", auth, (req, res) => {
   const newEmail = req.body.email;
-  if (!newEmail.includes("@"))
-    return res.status(400).json({ error: "Invalid email" });
 
-  db.run(
-    `UPDATE users SET email = '${newEmail}' WHERE id = ${req.user.id}`,
-    () => res.json({ success: true, email: newEmail })
-  );
+  if (!newEmail.includes("@")) return res.status(400).json({ error: "Invalid email" });
+
+  const sql = `
+    UPDATE users SET email = '${newEmail}' WHERE id = ${req.user.id}
+  `;
+  db.run(sql, () => {
+    res.json({ success: true, email: newEmail });
+  });
 });
 
-// -----------------------------------------------------
-// STATIC ROUTES (headers already applied by middleware)
-// -----------------------------------------------------
+/* ----------------------------------------------------
+   PUBLIC STATIC ENDPOINTS — allow caching (fixes ZAP 10049)
+---------------------------------------------------- */
 app.get("/", (req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=3600");
   res.send("FastBank backend running");
 });
 
 app.get("/robots.txt", (req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=3600");
   res.type("text/plain").send("User-agent: *\nDisallow:");
 });
 
 app.get("/sitemap.xml", (req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=3600");
   res.type("application/xml").send(
     `<?xml version="1.0" encoding="UTF-8"?>
      <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -228,7 +235,9 @@ app.get("/sitemap.xml", (req, res) => {
   );
 });
 
-// -----------------------------------------------------
+/* ----------------------------------------------------
+   START SERVER
+---------------------------------------------------- */
 app.listen(3000, () =>
   console.log("FastBank Version A backend running on http://localhost:3000")
 );
