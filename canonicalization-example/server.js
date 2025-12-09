@@ -1,4 +1,3 @@
-// server.js
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
@@ -7,13 +6,11 @@ const { body, validationResult } = require("express-validator");
 const app = express();
 
 /* ----------------------------------------------------
- * GLOBAL SECURITY HEADERS (first middleware!)
+ * GLOBAL SECURITY HEADERS
  * --------------------------------------------------*/
 app.disable("x-powered-by");
 
 app.use((req, res, next) => {
-  // Strong CSP with explicit directives so ZAP
-  // does not complain about missing fallbacks.
   res.setHeader(
     "Content-Security-Policy",
     [
@@ -29,22 +26,20 @@ app.use((req, res, next) => {
     ].join("; ")
   );
 
-  // Lock down powerful APIs
   res.setHeader(
     "Permissions-Policy",
     "geolocation=(), microphone=(), camera=(), fullscreen=()"
   );
 
-  // Basic hardening
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
 
-  // Spectre / cross-origin protections
+  // Spectre protections
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
 
-  // Reasonable cache policy (ZAP might call this informational only)
+  // Universal no-cache
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
@@ -53,11 +48,26 @@ app.use((req, res, next) => {
 });
 
 /* ----------------------------------------------------
- * BODY PARSING + STATIC FILES
+ * BODY PARSING
  * --------------------------------------------------*/
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+
+/* ----------------------------------------------------
+ * STATIC FILES (ZAP-FRIENDLY NO-CACHE)
+ * --------------------------------------------------*/
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    etag: false,
+    lastModified: false,
+    maxAge: 0,
+    setHeaders: (res) => {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+    }
+  })
+);
 
 /* ----------------------------------------------------
  * FILE SYSTEM SETUP
@@ -67,13 +77,10 @@ if (!fs.existsSync(BASE_DIR)) {
   fs.mkdirSync(BASE_DIR, { recursive: true });
 }
 
-// Canonicalization helper
 function resolveSafe(baseDir, userInput) {
   try {
     userInput = decodeURIComponent(userInput);
-  } catch (e) {
-    // ignore bad encoding, treat raw value
-  }
+  } catch (e) {}
   return path.resolve(baseDir, userInput);
 }
 
@@ -83,11 +90,10 @@ function resolveSafe(baseDir, userInput) {
 app.post(
   "/read",
   body("filename")
-    .exists().withMessage("filename required")
-    .bail()
+    .exists()
     .isString()
     .trim()
-    .notEmpty().withMessage("filename must not be empty")
+    .notEmpty()
     .custom((value) => {
       if (value.includes("\0")) throw new Error("null byte not allowed");
       return true;
@@ -101,7 +107,6 @@ app.post(
     const filename = req.body.filename;
     const normalized = resolveSafe(BASE_DIR, filename);
 
-    // Prevent breaking out of BASE_DIR
     if (!normalized.startsWith(BASE_DIR + path.sep)) {
       return res.status(403).json({ error: "Path traversal detected" });
     }
@@ -117,22 +122,17 @@ app.post(
 
 /* ----------------------------------------------------
  * SECURE /read-no-validate ROUTE
- * (kept simple but safe)
  * --------------------------------------------------*/
 app.post("/read-no-validate", (req, res) => {
   const filename = req.body.filename || "";
-
-  // Normalize the input
   let safeName = path.normalize(filename);
 
-  // Block ../ and absolute paths
   if (safeName.includes("..") || path.isAbsolute(safeName)) {
     return res.status(400).json({ error: "Invalid filename" });
   }
 
   const fullPath = resolveSafe(BASE_DIR, safeName);
 
-  // Prevent exiting BASE_DIR
   if (!fullPath.startsWith(BASE_DIR + path.sep)) {
     return res.status(403).json({ error: "Path traversal blocked" });
   }
@@ -155,25 +155,14 @@ app.post("/setup-sample", (req, res) => {
   };
 
   for (const key of Object.keys(samples)) {
-    // Normalize dictionary keys
     const normalized = path.normalize(key);
-
-    // Block traversal or absolute paths
-    if (normalized.includes("..") || path.isAbsolute(normalized)) {
-      continue;
-    }
+    if (normalized.includes("..") || path.isAbsolute(normalized)) continue;
 
     const filePath = resolveSafe(BASE_DIR, normalized);
-
-    // Ensure we stay inside BASE_DIR
-    if (!filePath.startsWith(BASE_DIR + path.sep)) {
-      continue;
-    }
+    if (!filePath.startsWith(BASE_DIR + path.sep)) continue;
 
     const dir = path.dirname(filePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
     fs.writeFileSync(filePath, samples[key], "utf8");
   }
