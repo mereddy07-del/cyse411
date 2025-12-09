@@ -3,13 +3,16 @@ const app = express();
 
 app.use(express.json());
 
-// --------------------------------------
-// Security Headers (removes ZAP warnings)
-// --------------------------------------
+/* --------------------------------------
+   Security Headers (removes ZAP warnings)
+--------------------------------------- */
+
+// Disable Express identifying header
+app.disable("x-powered-by");
+
 app.use((req, res, next) => {
   res.setHeader("Content-Security-Policy", "default-src 'self'");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");   // ✅ ADD THIS
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
@@ -31,7 +34,7 @@ const orders = [
   { id: 4, userId: 2, item: "Keyboard", region: "south", total: 60 },
 ];
 
-// Very simple "authentication”
+// Very simple "authentication" via headers
 function fakeAuth(req, res, next) {
   const id = parseInt(req.header("X-User-Id"), 10);
 
@@ -61,6 +64,7 @@ app.get("/orders/:id", (req, res) => {
     return res.status(404).json({ error: "Order not found" });
   }
 
+  // FIX: Check ownership to prevent IDOR
   if (order.userId !== req.user.id && req.user.role !== "support") {
     return res.status(403).json({ error: "Forbidden: access denied" });
   }
