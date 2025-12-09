@@ -7,35 +7,46 @@ const crypto = require("crypto");
 
 const app = express();
 
-// Disable X-Powered-By: Express (fixes ZAP info leak)
-app.disable("x-powered-by");
+// -------------------------------
+// GLOBAL SECURITY HEADERS
+// -------------------------------
+app.disable("x-powered-by"); // Fix: remove "X-Powered-By: Express"
 
-// GLOBAL SECURITY HEADERS — Fixes ALL CSP warnings
 app.use((req, res, next) => {
+  // Strong CSP (fixes CSP: Failure to define directive + unsafe-inline alerts)
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; " +
-      "script-src 'self'; " +
-      "style-src 'self'; " +
-      "img-src 'self'; " +
-      "connect-src 'self'; " +
-      "form-action 'self'; " +
-      "frame-ancestors 'none'; " +
-      "object-src 'none'; " + 
-      "base-uri 'self';"
+    [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self'",
+      "img-src 'self' data:",
+      "connect-src 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+      "object-src 'none'",
+      "base-uri 'self'"
+    ].join("; ")
   );
 
+  // Fix: Spectre vulnerability alerts (Cross-Origin-Resource-Policy)
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+
+  // Fix: ZAP Cross-Origin-Embedder-Policy missing
+  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+
+  // Fix: caching warnings
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+
+  // Other recommended security headers
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Permissions-Policy", "geolocation=()");
-  
-  // Fix "Insufficient Site Isolation Against Spectre"
-  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
 
   next();
 });
-
 // --- BASIC CORS ---
 app.use(
   cors({
