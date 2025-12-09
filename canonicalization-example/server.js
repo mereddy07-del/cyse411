@@ -11,26 +11,20 @@ const app = express();
 app.disable("x-powered-by");
 
 app.use((req, res, next) => {
-  res.setHeader(
-    "Content-Security-Policy",
-    [
-      "default-src 'self'",
-      "script-src 'self'",
-      "style-src 'self'",
-      "img-src 'self'",
-      "connect-src 'self'",
-      "form-action 'self'",
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "base-uri 'self'"
-    ].join("; ")
-  );
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "img-src 'self'",
+    "connect-src 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "object-src 'none'",
+    "base-uri 'self'"
+  ].join("; ");
 
-  res.setHeader(
-    "Permissions-Policy",
-    "geolocation=(), microphone=(), camera=(), fullscreen=()"
-  );
-
+  res.setHeader("Content-Security-Policy", csp);
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=(), fullscreen=()");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
 
@@ -89,15 +83,10 @@ function resolveSafe(baseDir, userInput) {
  * --------------------------------------------------*/
 app.post(
   "/read",
-  body("filename")
-    .exists()
-    .isString()
-    .trim()
-    .notEmpty()
-    .custom((value) => {
-      if (value.includes("\0")) throw new Error("null byte not allowed");
-      return true;
-    }),
+  body("filename").exists().isString().trim().notEmpty().custom((value) => {
+    if (value.includes("\0")) throw new Error("null byte not allowed");
+    return true;
+  }),
   (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -168,6 +157,24 @@ app.post("/setup-sample", (req, res) => {
   }
 
   res.json({ ok: true, base: BASE_DIR });
+});
+
+/* ----------------------------------------------------
+ * FIX FOR ZAP: robots.txt + sitemap.xml MUST SEND CSP
+ * --------------------------------------------------*/
+app.get("/robots.txt", (req, res) => {
+  res.type("text/plain");
+  res.setHeader("Content-Security-Policy", res.get("Content-Security-Policy"));
+  res.send("User-agent: *\nDisallow:");
+});
+
+app.get("/sitemap.xml", (req, res) => {
+  res.type("application/xml");
+  res.setHeader("Content-Security-Policy", res.get("Content-Security-Policy"));
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>http://localhost:4000/</loc></url>
+</urlset>`);
 });
 
 /* ----------------------------------------------------
