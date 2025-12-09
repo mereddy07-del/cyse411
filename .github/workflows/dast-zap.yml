@@ -1,4 +1,4 @@
-name: DAST - OWASP ZAP Full Scan (fastbank_insecure_classwork)
+name: DAST - OWASP ZAP Full Scan (IDOR)
 
 on:
   workflow_dispatch:
@@ -16,19 +16,19 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install backend dependencies
-        working-directory: fastbank_insecure_classwork/backend
+      - name: Install dependencies
+        working-directory: idor
         run: npm install || true
 
-      - name: Start FastBank insecure backend
-        working-directory: fastbank_insecure_classwork/backend
+      - name: Start IDOR Server
+        working-directory: idor
         run: |
           node server.js &
-          echo "Waiting for server on port 3000..."
+          echo "Waiting for IDOR server on port 3000..."
 
           for i in {1..30}; do
             if curl -s http://localhost:3000 > /dev/null; then
-              echo "Server is UP!"
+              echo "IDOR server is UP!"
               break
             fi
             sleep 1
@@ -44,5 +44,5 @@ jobs:
       - name: Upload ZAP Scan Report
         uses: actions/upload-artifact@v4
         with:
-          name: zap_scan
+          name: zap_scan_idor
           path: report.html
