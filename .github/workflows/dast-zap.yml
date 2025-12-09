@@ -1,4 +1,4 @@
-name: DAST - OWASP ZAP Full Scan (canonicalization-example)
+name: DAST - OWASP ZAP Full Scan (Canonicalization)
 
 on:
   workflow_dispatch:
@@ -17,18 +17,18 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        working-directory: cyse411/canonicalization-example
+        working-directory: canonicalization-example
         run: npm install || true
 
       - name: Start Canonicalization Server
-        working-directory: cyse411/canonicalization-example
+        working-directory: canonicalization-example
         run: |
-          node server.js > server.log 2>&1 &
-          echo "Waiting for canonicalization server on port 4000..."
+          node server.js &
+          echo "Waiting for server on port 4000..."
 
           for i in {1..40}; do
             if curl -s http://localhost:4000 > /dev/null; then
-              echo "Canonicalization server is UP!"
+              echo "Server is UP!"
               break
             fi
             sleep 1
@@ -40,7 +40,6 @@ jobs:
           target: "http://localhost:4000"
           fail_action: false
           allow_issue_writing: false
-          cmd_options: "-a"
 
       - name: Upload ZAP Scan Report
         uses: actions/upload-artifact@v4
