@@ -3,6 +3,19 @@ const app = express();
 
 app.use(express.json());
 
+// --------------------------------------
+// Security Headers (removes ZAP warnings)
+// --------------------------------------
+app.use((req, res, next) => {
+  res.setHeader("Content-Security-Policy", "default-src 'self'");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  next();
+});
+
 // Fake "database"
 const users = [
   { id: 1, name: "Alice", role: "customer", department: "north" },
@@ -17,48 +30,54 @@ const orders = [
   { id: 4, userId: 2, item: "Keyboard", region: "south", total: 60 },
 ];
 
-// Very simple "authentication" via headers:
-//   X-User-Id: <user id>
-//   (we pretend that real auth already happened)
+// Very simple "authentication" via headers
 function fakeAuth(req, res, next) {
-  const idHeader = req.header("X-User-Id");
-  const id = idHeader ? parseInt(idHeader, 10) : null;
+  const id = parseInt(req.header("X-User-Id"), 10);
 
-  const user = users.find((u) => u.id === id);
-  if (!user) {
+  if (!id) {
     return res.status(401).json({ error: "Unauthenticated: set X-User-Id" });
   }
 
-  // Attach authenticated user to the request
+  const user = users.find((u) => u.id === id);
+  if (!user) {
+    return res.status(401).json({ error: "Invalid user" });
+  }
+
   req.user = user;
   next();
 }
 
-// Apply fakeAuth to all routes below this line
 app.use(fakeAuth);
 
-// VULNERABLE endpoint: no ownership check (IDOR)
+// --------------------------------------
+// SECURE ENDPOINT (IDOR FIXED)
+// --------------------------------------
 app.get("/orders/:id", (req, res) => {
   const orderId = parseInt(req.params.id, 10);
-
   const order = orders.find((o) => o.id === orderId);
+
   if (!order) {
     return res.status(404).json({ error: "Order not found" });
   }
 
-  // BUG: no check that order.userId === req.user.id
+  // FIX: Check ownership to prevent IDOR 
+  if (order.userId !== req.user.id && req.user.role !== "support") {
+    return res.status(403).json({ error: "Forbidden: access denied" });
+  }
+
   return res.json(order);
 });
 
-
-
 // Health check
 app.get("/", (req, res) => {
-  res.json({ message: "Access Control Tutorial API", currentUser: req.user });
+  res.json({
+    message: "Access Control Tutorial API",
+    currentUser: req.user,
+  });
 });
 
 // Start server
 const PORT = 3000;
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Secure server running at http://localhost:${PORT}`);
 });
