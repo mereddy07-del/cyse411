@@ -1,4 +1,4 @@
-name: DAST - OWASP ZAP Full Scan (IDOR)
+name: DAST - OWASP ZAP Full Scan (canonicalization-example)
 
 on:
   workflow_dispatch:
@@ -17,18 +17,18 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        working-directory: idor
+        working-directory: cyse411/canonicalization-example
         run: npm install || true
 
-      - name: Start IDOR Server
-        working-directory: idor
+      - name: Start Canonicalization Server
+        working-directory: cyse411/canonicalization-example
         run: |
-          node server.js &
-          echo "Waiting for IDOR server on port 3000..."
+          node server.js > server.log 2>&1 &
+          echo "Waiting for canonicalization server on port 4000..."
 
-          for i in {1..30}; do
-            if curl -s http://localhost:3000 > /dev/null; then
-              echo "IDOR server is UP!"
+          for i in {1..40}; do
+            if curl -s http://localhost:4000 > /dev/null; then
+              echo "Canonicalization server is UP!"
               break
             fi
             sleep 1
@@ -37,12 +37,13 @@ jobs:
       - name: Run OWASP ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.13.0
         with:
-          target: "http://localhost:3000"
+          target: "http://localhost:4000"
           fail_action: false
           allow_issue_writing: false
+          cmd_options: "-a"
 
       - name: Upload ZAP Scan Report
         uses: actions/upload-artifact@v4
         with:
-          name: zap_scan_idor
+          name: zap_scan_canonicalization
           path: report.html
