@@ -195,6 +195,27 @@ app.post("/change-email", auth, (req, res) => {
   });
 });
 
+/* --- Fix ZAP CSP missing header on static endpoints --- */
+// For "/" root path
+app.get("/", (req, res) => {
+  res.send("FastBank backend running");
+});
+
+// For robots.txt
+app.get("/robots.txt", (req, res) => {
+  res.type("text/plain").send("User-agent: *\nDisallow:");
+});
+
+// For sitemap.xml
+app.get("/sitemap.xml", (req, res) => {
+  res.type("application/xml").send(
+    `<?xml version="1.0" encoding="UTF-8"?>
+     <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+       <url><loc>http://localhost:3000/</loc></url>
+     </urlset>`
+  );
+});
+
 // START SERVER
 app.listen(3000, () =>
   console.log("FastBank Version A backend running on http://localhost:3000")
