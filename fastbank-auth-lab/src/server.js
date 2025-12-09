@@ -8,12 +8,11 @@ const app = express();
 const PORT = 3001;
 
 // ----------------------------------------------------
-// GLOBAL SECURITY HEADERS — ZAP CLEAN VERSION
+// GLOBAL SECURITY HEADERS MUST BE FIRST!!!
 // ----------------------------------------------------
 app.disable("x-powered-by");
 
 app.use((req, res, next) => {
-  // Complete CSP defining all directives required by ZAP
   res.setHeader(
     "Content-Security-Policy",
     [
@@ -29,27 +28,20 @@ app.use((req, res, next) => {
     ].join("; ")
   );
 
-  // Required to fix ZAP Low Alert: Permissions Policy not set
   res.setHeader(
     "Permissions-Policy",
     "geolocation=(), microphone=(), camera=(), fullscreen=()"
   );
 
-  // Prevent MIME sniffing
   res.setHeader("X-Content-Type-Options", "nosniff");
-
-  // Prevent clickjacking
   res.setHeader("X-Frame-Options", "DENY");
 
-  // Fixes Spectre-related ZAP alerts
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
 
-  // Strong HSTS (ignored on localhost but ZAP likes it)
   res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
 
-  // Disable caching (avoids storable content issues)
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
@@ -58,7 +50,7 @@ app.use((req, res, next) => {
 });
 
 // ----------------------------------------------------
-// APP SETUP
+// ONLY NOW load bodyParser, cookieParser, static files
 // ----------------------------------------------------
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
