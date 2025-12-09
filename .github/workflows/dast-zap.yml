@@ -1,4 +1,4 @@
-name: DAST - OWASP ZAP Full Scan (fastback-auth-lab)
+name: DAST - OWASP ZAP Full Scan (fastbank_insecure_classwork)
 
 on:
   workflow_dispatch:
@@ -16,32 +16,32 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        working-directory: fastbank-auth-lab/src
+      - name: Install backend dependencies
+        working-directory: fastbank_insecure_classwork/backend
         run: npm install || true
 
-      - name: Start Auth Lab App
-        working-directory: fastbank-auth-lab/src
+      - name: Start FastBank insecure backend
+        working-directory: fastbank_insecure_classwork/backend
         run: |
           node server.js &
-          echo "Waiting for server on port 3001..."
+          echo "Waiting for server on port 3000..."
 
           for i in {1..30}; do
-            if curl -s http://localhost:3001 > /dev/null; then
+            if curl -s http://localhost:3000 > /dev/null; then
               echo "Server is UP!"
               break
             fi
             sleep 1
           done
 
-      - name: Run OWASP ZAP full scan
+      - name: Run OWASP ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.13.0
         with:
-          target: "http://localhost:3001"
+          target: "http://localhost:3000"
           fail_action: false
           allow_issue_writing: false
 
-      - name: Upload ZAP scan report
+      - name: Upload ZAP Scan Report
         uses: actions/upload-artifact@v4
         with:
           name: zap_scan
