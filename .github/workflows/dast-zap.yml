@@ -1,4 +1,4 @@
-name: DAST - OWASP ZAP Full Scan (IDOR Service)
+name: DAST - OWASP ZAP Full Scan
 
 on:
   workflow_dispatch:
@@ -11,35 +11,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Install Node.js for running the IDOR server
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # Install dependencies for the IDOR server
-      - name: Install IDOR dependencies
+      - name: Install dependencies
         working-directory: idor
         run: npm install
 
-      # Start the secure IDOR server on port 3002
-      - name: Start IDOR server
+      - name: Start IDOR app
         working-directory: idor
         run: |
           node server.js &
-          sleep 20
+          echo "Waiting for server..."
+          for i in {1..25}; do
+            if nc -z localhost 3000; then
+              echo "Server is up!"
+              break
+            fi
+            sleep 1
+          done
 
-      # Run OWASP ZAP against IDOR service
       - name: Run OWASP ZAP full scan
         uses: zaproxy/action-full-scan@v0.13.0
         with:
-          target: "http://localhost:3002"
+          target: "http://localhost:3000"
           fail_action: false
           allow_issue_writing: false
 
-      # Upload the ZAP report artifact
       - name: Upload ZAP scan report
         uses: actions/upload-artifact@v4
         with:
-          name: zap_scan_idor
+          name: zap_scan
           path: report.html
